@@ -9,11 +9,16 @@ import random
 import sys
 from pathlib import Path
 
-from text_patch_transfer_radius.dataset import build_cases, write_cases_jsonl
+from text_patch_transfer_radius.dataset import (
+    build_cases,
+    write_case_audit,
+    write_cases_jsonl,
+)
 from text_patch_transfer_radius.metrics import (
     assign_profiles,
-    compute_boundary_cost_rows,
+    compute_boundary_behavior_rows,
     compute_summary_rows,
+    compute_surface_cue_rows,
     compute_targeted_rows,
     write_dataset_stats,
     write_summary_csv,
@@ -25,6 +30,7 @@ from text_patch_transfer_radius.model_adapters import (
 )
 from text_patch_transfer_radius.patches import get_patches, targeted_by_patch
 from text_patch_transfer_radius.prompts import build_prompt, prompt_hash
+from text_patch_transfer_radius.validation import validate_cases
 
 
 DEFAULT_SEED = 2026
@@ -34,13 +40,24 @@ def main() -> int:
     args = parse_args()
     root = Path(__file__).resolve().parent
     data_path = root / "data" / "eval_cases.jsonl"
+    audit_path = root / "data" / "case_audit.md"
     results_dir = root / "results"
 
     cases = build_cases()
     patches = get_patches()
 
     write_cases_jsonl(data_path, cases)
-    write_dataset_stats(results_dir / "dataset_stats.md", cases)
+    write_case_audit(audit_path, cases)
+
+    if not args.skip_validation:
+        errors = validate_cases(cases, patches)
+        if errors:
+            print("Dataset validation failed:", file=sys.stderr)
+            for error in errors:
+                print(f"- {error}", file=sys.stderr)
+            return 1
+
+    write_dataset_stats(results_dir / "dataset_stats.md", cases, patches)
 
     try:
         adapter = build_adapter(args)
@@ -58,19 +75,28 @@ def main() -> int:
     write_raw_results(results_dir / "raw_results.jsonl", records)
     summary_rows = compute_summary_rows(records, patches)
     targeted_rows = compute_targeted_rows(records, patches)
-    boundary_rows = compute_boundary_cost_rows(records, patches)
-    profiles = assign_profiles(records, patches, boundary_rows)
+    boundary_rows = compute_boundary_behavior_rows(records, patches)
+    surface_rows = compute_surface_cue_rows(records, patches)
+    profiles = assign_profiles(records, patches, targeted_rows, boundary_rows)
 
-    write_summary_csv(results_dir / "summary.csv", summary_rows)
+    write_summary_csv(
+        results_dir / "summary.csv",
+        summary_rows=summary_rows,
+        targeted_rows=targeted_rows,
+        boundary_rows=boundary_rows,
+        surface_rows=surface_rows,
+    )
     write_summary_md(
         results_dir / "summary.md",
         summary_rows=summary_rows,
         targeted_rows=targeted_rows,
         boundary_rows=boundary_rows,
+        surface_rows=surface_rows,
         profiles=profiles,
     )
 
     print(f"Wrote {data_path.relative_to(root)}")
+    print(f"Wrote {audit_path.relative_to(root)}")
     print(f"Wrote {results_dir.relative_to(root)}/raw_results.jsonl")
     print(f"Wrote {results_dir.relative_to(root)}/summary.csv")
     print(f"Wrote {results_dir.relative_to(root)}/summary.md")
@@ -105,6 +131,11 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SEED,
         help="Fixed seed for evaluation condition order.",
     )
+    parser.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Skip dataset validation before model evaluation.",
+    )
     return parser.parse_args()
 
 
@@ -132,9 +163,12 @@ def run_evaluations(
                 {
                     "case_id": case["id"],
                     "patch_id": patch["patch_id"],
-                    "split": case["split"],
+                    "distance_from_seed": case["distance_from_seed"],
                     "scenario_family": case["scenario_family"],
                     "surface_frame": case["surface_frame"],
+                    "surface_cue": case["surface_cue"],
+                    "cue_label_agreement": case["cue_label_agreement"],
+                    "boundary_type": case["boundary_type"],
                     "boundary_risk": case["boundary_risk"],
                     "label": case["label"],
                     "prediction": prediction.prediction,
