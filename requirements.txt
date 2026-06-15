@@ -1,0 +1,3 @@
+# The mock experiment uses only the Python standard library.
+# Install this dependency only for the optional `--model` API path.
+openai>=1.0.0
