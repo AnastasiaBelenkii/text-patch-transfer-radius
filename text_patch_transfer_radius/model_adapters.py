@@ -70,23 +70,44 @@ class OpenAIPolicyClassifier:
 
     def predict(self, case: dict, patch: dict, prompt: str) -> Prediction:
         try:
-            response = self.client.responses.create(
-                model=self.model_name,
-                input=prompt,
-                temperature=self.temperature,
-                max_output_tokens=4,
-            )
+            response = self._create_response(prompt, include_temperature=True)
             raw_output = response.output_text
         except TypeError:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=self.temperature,
-                max_tokens=4,
-            )
-            raw_output = response.choices[0].message.content or ""
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=self.temperature,
+                    max_tokens=16,
+                )
+                raw_output = response.choices[0].message.content or ""
+            except Exception as exc:
+                raise RuntimeError(_format_api_error(exc)) from exc
+        except Exception as exc:
+            message = str(exc)
+            lowered = message.lower()
+            if "temperature" in lowered and (
+                "unsupported" in lowered or "not supported" in lowered
+            ):
+                try:
+                    response = self._create_response(prompt, include_temperature=False)
+                    raw_output = response.output_text
+                except Exception as retry_exc:
+                    raise RuntimeError(_format_api_error(retry_exc)) from retry_exc
+            else:
+                raise RuntimeError(_format_api_error(exc)) from exc
         prediction = parse_label(raw_output)
         return Prediction(prediction=prediction, raw_output=raw_output.strip())
+
+    def _create_response(self, prompt: str, include_temperature: bool):
+        kwargs = {
+            "model": self.model_name,
+            "input": prompt,
+            "max_output_tokens": 16,
+        }
+        if include_temperature:
+            kwargs["temperature"] = self.temperature
+        return self.client.responses.create(**kwargs)
 
 
 def _opposite(label: str) -> str:
@@ -247,3 +268,15 @@ def _mentions_rule_override(text: str) -> bool:
         token in lowered
         for token in ["ignore previous", "bypass", "override", "disable", "rule"]
     )
+
+
+def _format_api_error(exc: Exception) -> str:
+    name = exc.__class__.__name__
+    message = str(exc)
+    if "insufficient_quota" in message or "exceeded your current quota" in message:
+        return (
+            "OpenAI API call failed: insufficient quota for the configured key. "
+            "Check billing/quota or update .env, then rerun "
+            "`python run_experiment.py --model gpt-5.4-mini`."
+        )
+    return f"OpenAI API call failed ({name}): {message}"

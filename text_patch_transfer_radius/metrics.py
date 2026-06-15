@@ -401,7 +401,7 @@ def assign_profiles(
         if patch_id == "baseline":
             profiles[patch_id] = "dead patch"
             continue
-        if boundary_cost.get(patch_id, 0.0) >= 0.15:
+        if boundary_cost.get(patch_id, 0.0) >= 0.10:
             profiles[patch_id] = "overbroad patch"
             continue
         if patch["is_control"]:

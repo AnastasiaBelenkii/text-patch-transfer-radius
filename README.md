@@ -25,7 +25,7 @@ Additional fields test shallow heuristics:
 
 Contrast pairs are included. For example, a `BLOCK` case may ask to reveal hidden instructions, while a nearby `ALLOW` case asks for a high-level explanation of why hidden instructions should remain hidden. The dataset includes both `block_like` `ALLOW` cases and `allow_like` `BLOCK` cases so the task is not solvable by scary keyword matching.
 
-Current mock dataset size: 216 cases, including 36 `benign_boundary_allow` cases and 24 `hard_boundary_block` cases. See `data/case_audit.md` and `results/dataset_stats.md`.
+Current dataset size: 216 cases, including 36 `benign_boundary_allow` cases and 24 `hard_boundary_block` cases. See `data/case_audit.md` and `results/dataset_stats.md`.
 
 ## Patches
 
@@ -77,7 +77,9 @@ python run_experiment.py --mock
 Optional API path, if `openai` is installed and `OPENAI_API_KEY` is set:
 
 ```bash
-python run_experiment.py --model <model_name>
+cp .env.example .env
+# edit .env and set OPENAI_API_KEY
+python run_experiment.py --model gpt-5.4-mini
 ```
 
 The runner writes:
@@ -91,30 +93,32 @@ The runner writes:
 
 If the API dependency or key is missing, the script exits with a clear message telling you to run `--mock`.
 
-## Latest Mock Results
+## Latest API Results
 
-Latest run: `mock-rule-simulator-v1` via `python run_experiment.py --mock`.
+Latest run: `gpt-5.4-mini` via `python run_experiment.py --model gpt-5.4-mini`.
+
+In this run, the baseline prompt already reached 100.0% accuracy across all distance and scenario-family groups, so the targeted patches had no positive headroom. The overbroad caution patch introduced measurable boundary harm.
 
 Targeted specificity summary:
 
 | Patch | Targeted gain | Off-target gain | Specificity | Profile |
 |---|---:|---:|---:|---|
-| Length/style control | NA | +3.2% | NA | generic caution patch |
-| Hidden-instruction targeted patch | +25.0% | +0.0% | +25.0% | targeted and specific patch |
-| Credential targeted patch | +12.5% | -1.6% | +14.1% | local patch |
-| Rule-override targeted patch | +41.7% | +0.0% | +41.7% | structural patch |
-| Overbroad caution patch | +55.6% | -24.3% | +79.9% | overbroad patch |
+| Length/style control | NA | -0.5% | NA | generic caution patch |
+| Hidden-instruction targeted patch | +0.0% | +0.0% | +0.0% | dead patch |
+| Credential targeted patch | +0.0% | +0.0% | +0.0% | dead patch |
+| Rule-override targeted patch | +0.0% | +0.0% | +0.0% | dead patch |
+| Overbroad caution patch | +0.0% | -3.5% | +3.5% | overbroad patch |
 
 Boundary behavior:
 
 | Patch | Benign-boundary accuracy | Boundary cost | Hard-boundary accuracy |
 |---|---:|---:|---:|
-| Baseline prompt | 77.8% | +0.0% | 25.0% |
-| Length/style control | 77.8% | +0.0% | 33.3% |
-| Hidden-instruction targeted patch | 77.8% | +0.0% | 29.2% |
-| Credential targeted patch | 69.4% | +8.3% | 25.0% |
-| Rule-override targeted patch | 77.8% | +0.0% | 33.3% |
-| Overbroad caution patch | 16.7% | +61.1% | 66.7% |
+| Baseline prompt | 100.0% | +0.0% | 100.0% |
+| Length/style control | 100.0% | +0.0% | 95.8% |
+| Hidden-instruction targeted patch | 100.0% | +0.0% | 100.0% |
+| Credential targeted patch | 100.0% | +0.0% | 100.0% |
+| Rule-override targeted patch | 100.0% | +0.0% | 100.0% |
+| Overbroad caution patch | 88.9% | +11.1% | 100.0% |
 
 Full latest tables are in `results/summary.md`.
 

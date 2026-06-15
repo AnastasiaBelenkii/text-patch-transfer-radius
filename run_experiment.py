@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -43,6 +44,8 @@ def main() -> int:
     audit_path = root / "data" / "case_audit.md"
     results_dir = root / "results"
 
+    load_env_file(root / ".env")
+
     cases = build_cases()
     patches = get_patches()
 
@@ -65,12 +68,16 @@ def main() -> int:
         print(str(exc), file=sys.stderr)
         return 2
 
-    records = run_evaluations(
-        cases=cases,
-        patches=patches,
-        adapter=adapter,
-        seed=args.seed,
-    )
+    try:
+        records = run_evaluations(
+            cases=cases,
+            patches=patches,
+            adapter=adapter,
+            seed=args.seed,
+        )
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
 
     write_raw_results(results_dir / "raw_results.jsonl", records)
     summary_rows = compute_summary_rows(records, patches)
@@ -143,6 +150,22 @@ def build_adapter(args: argparse.Namespace):
     if args.model:
         return OpenAIPolicyClassifier(args.model, temperature=args.temperature)
     return MockPolicyClassifier()
+
+
+def load_env_file(path: Path) -> None:
+    """Load simple KEY=VALUE entries from .env without overriding the process env."""
+
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("\"'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def run_evaluations(
